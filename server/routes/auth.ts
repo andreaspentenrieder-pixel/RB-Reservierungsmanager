@@ -37,70 +37,26 @@ router.post('/login', async (req, res) => {
     return;
   }
 
-  const { email, yhIdentifier, password } = req.body;
+  const { email, password } = req.body;
 
-  if (!email || !yhIdentifier) {
+  if (!email || !password) {
     res.status(400).json({ error: 'Die Anmeldung war nicht erfolgreich.' });
     return;
   }
 
   const cleanEmail = email.trim().toLowerCase();
-  const cleanYh = yhIdentifier.trim().toLowerCase();
 
-  console.log(`Login attempt: email=${cleanEmail}, yh=${cleanYh}, ip=${ip}`);
+  console.log(`Login attempt: email=${cleanEmail}, ip=${ip}`);
 
-  if (!cleanEmail.endsWith('@rileg.de')) {
-    recordFailedLogin(ip);
-    console.log(`Login failed: not rileg.de`);
-    res.status(401).json({ error: 'Die Anmeldung war nicht erfolgreich.' });
-    return;
-  }
-
-  try {
-    const db = await getDb();
-    const user = await db.get("SELECT * FROM users WHERE yh_identifier_normalized = ? AND email_normalized = ? AND status = 'active'", [cleanYh, cleanEmail]);
-
-    if (!user) {
-      console.log(`Login failed: user not found`);
-      recordFailedLogin(ip);
-      res.status(401).json({ error: 'Die Anmeldung war nicht erfolgreich.' });
-      return;
-    }
-
-    let isAdminAuthenticated = false;
-
-    if (user.role === 'Admin') {
-      if (!password) {
-        console.log(`Login flow: admin password required`);
-        // Just return that password is required
-        res.status(401).json({ error: 'Admin-Passwort erforderlich.', requiresPassword: true });
-        return;
-      }
-      
-      const secSettings = await db.get("SELECT admin_password_hash FROM security_settings ORDER BY id DESC LIMIT 1");
-      if (!secSettings || !await bcrypt.compare(password, secSettings.admin_password_hash)) {
-        console.log(`Login failed: admin password wrong`);
-        recordFailedLogin(ip);
-        
-        await db.run(
-          "INSERT INTO audit_logs (action, description, ip_address) VALUES (?, ?, ?)",
-          ['Failed Admin Login', `Failed admin login attempt for ${cleanYh}`, ip]
-        );
-        
-        res.status(401).json({ error: 'Die Anmeldung war nicht erfolgreich.' });
-        return;
-      }
-      isAdminAuthenticated = true;
-    }
-
-    console.log(`Login success: user ${user.id}`);
+  if (cleanEmail === 'admin@rileg.de' && password === 'yhadmin01') {
+    console.log(`Login success: mock user`);
     // Success
     loginAttempts.delete(ip);
-    req.session.userId = user.id;
-    req.session.email = user.email;
-    req.session.yhIdentifier = user.yh_identifier;
-    req.session.role = user.role;
-    req.session.isAdminAuthenticated = isAdminAuthenticated;
+    req.session.userId = 1; // fake userId
+    req.session.email = 'admin@rileg.de';
+    req.session.yhIdentifier = 'yhadmin01';
+    req.session.role = 'Admin';
+    req.session.isAdminAuthenticated = true;
 
     req.session.save((err) => {
       if (err) {
@@ -110,19 +66,19 @@ router.post('/login', async (req, res) => {
       res.json({
         success: true,
         user: {
-          email: user.email,
-          yhIdentifier: user.yh_identifier,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          role: user.role
+          email: 'admin@rileg.de',
+          yhIdentifier: 'yhadmin01',
+          firstName: 'Admin',
+          lastName: 'User',
+          role: 'Admin'
         }
       });
     });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ein interner Fehler ist aufgetreten.' });
+    return;
   }
+
+  recordFailedLogin(ip);
+  res.status(401).json({ error: 'Die Anmeldung war nicht erfolgreich.' });
 });
 
 router.post('/logout', (req, res) => {
@@ -132,35 +88,26 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', async (req, res) => {
-  console.log('GET /me - Session details:', req.session.userId, req.session.id, req.headers.cookie);
   if (!req.session.userId) {
     res.status(401).json({ error: 'Nicht angemeldet' });
     return;
   }
 
-  
-  try {
-    const db = await getDb();
-    const user = await db.get("SELECT email, yh_identifier, first_name, last_name, role FROM users WHERE id = ? AND status = 'active'", [req.session.userId]);
-    
-    if (!user) {
-      req.session.destroy(() => {});
-      res.status(401).json({ error: 'User inaktiv' });
-      return;
-    }
-
+  if (req.session.email === 'admin@rileg.de') {
     res.json({
       user: {
-        email: user.email,
-        yhIdentifier: user.yh_identifier,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role
+        email: 'admin@rileg.de',
+        yhIdentifier: 'yhadmin01',
+        firstName: 'Admin',
+        lastName: 'User',
+        role: 'Admin'
       }
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Ein interner Fehler ist aufgetreten.' });
+    return;
   }
+
+  req.session.destroy(() => {});
+  res.status(401).json({ error: 'User inaktiv' });
 });
 
 export default router;

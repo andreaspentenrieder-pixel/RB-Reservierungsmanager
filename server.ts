@@ -12,51 +12,52 @@ import adminRoutes from './server/routes/admin.js';
 
 const __dirname = path.resolve();
 
+const app = express();
+
+// Trust proxy to resolve correct IP for rate limiting behind load balancers
+app.set('trust proxy', true);
+
+// Security headers for no-indexing
+app.use((req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+
+app.use(express.json());
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'super_secret_rileg_dev_key_123',
+  resave: false,
+  saveUninitialized: false,
+  proxy: true, // Force trust proxy for secure cookies behind reverse proxy
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', // required for SameSite: none
+    httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 8 * 60 * 60 * 1000 // 8 hours
+  }
+}));
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/rooms', roomsRoutes);
+app.use('/api/vehicles', vehiclesRoutes);
+app.use('/api/reservations', reservationsRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', secure: req.secure, proto: req.headers['x-forwarded-proto'], ip: req.ip });
+});
+
+// Robots.txt
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('User-agent: *\nDisallow: /');
+});
+
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  // Trust proxy to resolve correct IP for rate limiting behind load balancers
-  app.set('trust proxy', true);
-
-  // Security headers for no-indexing
-  app.use((req, res, next) => {
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-    next();
-  });
-
-  app.use(express.json());
-  
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'super_secret_rileg_dev_key_123',
-    resave: false,
-    saveUninitialized: false,
-    proxy: true, // Force trust proxy for secure cookies behind reverse proxy
-    cookie: { 
-      secure: true, // required for SameSite: none
-      httpOnly: true,
-      sameSite: 'none', // required for iframe preview
-      maxAge: 8 * 60 * 60 * 1000 // 8 hours
-    }
-  }));
-
-  // API Routes
-  app.use('/api/auth', authRoutes);
-  app.use('/api/rooms', roomsRoutes);
-  app.use('/api/vehicles', vehiclesRoutes);
-  app.use('/api/reservations', reservationsRoutes);
-  app.use('/api/admin', adminRoutes);
-
-  // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', secure: req.secure, proto: req.headers['x-forwarded-proto'], ip: req.ip });
-  });
-
-  // Robots.txt
-  app.get('/robots.txt', (req, res) => {
-    res.type('text/plain');
-    res.send('User-agent: *\nDisallow: /');
-  });
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   // Vite integration
   if (process.env.NODE_ENV !== 'production') {
@@ -78,7 +79,15 @@ async function startServer() {
   });
 }
 
-// Run seed before start
-import('./server/seed.js').then(() => {
-  startServer();
-}).catch(console.error);
+// Ensure database initialization
+getDb().catch(console.error);
+
+// If running directly, start the server
+if (process.env.NODE_ENV !== 'production' || process.env.START_SERVER === 'true') {
+  // Run seed before start
+  import('./server/seed.js').then(() => {
+    startServer();
+  }).catch(console.error);
+}
+
+export default app;

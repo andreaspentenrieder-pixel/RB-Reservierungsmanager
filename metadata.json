@@ -1,0 +1,6 @@
+{
+  "name": "VR-Reservierungssystem",
+  "description": "Ein modernes, responsives Web-App-Reservierungssystem für Räume und Fahrzeuge der Raiffeisenbank Isar-Loisachtal eG.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

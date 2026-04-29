@@ -30,7 +30,6 @@ function recordFailedLogin(ip: string) {
 }
 
 router.post('/login', async (req, res) => {
-  require('fs').writeFileSync('/app/applet/debug.log', JSON.stringify(req.session.cookie) + '\n');
   console.log('Login: session.cookie:', req.session.cookie);
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRateLimit(ip)) {
@@ -103,15 +102,21 @@ router.post('/login', async (req, res) => {
     req.session.role = user.role;
     req.session.isAdminAuthenticated = isAdminAuthenticated;
 
-    res.json({
-      success: true,
-      user: {
-        email: user.email,
-        yhIdentifier: user.yh_identifier,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.status(500).json({ error: 'Session error' });
       }
+      res.json({
+        success: true,
+        user: {
+          email: user.email,
+          yhIdentifier: user.yh_identifier,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role
+        }
+      });
     });
 
   } catch (error) {

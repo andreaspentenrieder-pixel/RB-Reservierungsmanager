@@ -17,7 +17,7 @@ async function startServer() {
   const PORT = 3000;
 
   // Trust proxy to resolve correct IP for rate limiting behind load balancers
-  app.set('trust proxy', 1);
+  app.set('trust proxy', true);
 
   // Security headers for no-indexing
   app.use((req, res, next) => {
@@ -49,7 +49,7 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', secure: req.secure, proto: req.headers['x-forwarded-proto'], ip: req.ip });
   });
 
   // Robots.txt
